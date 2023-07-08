@@ -43,6 +43,12 @@ func (h *MoneyControlHandler) CollectMoneycontrolSymbols(ctx iris.Context) {
 	}
 	h.mlog.Info(fmt.Sprintf("Captured %s Symbols", strconv.Itoa(len(moneyControlSymbols))))
 	h.mlog.Info("Moneycontrol symbol collection ended")
+	response := models.Response{
+		Status: "success",
+		Msg:    "Symbols collected successfully",
+	}
+	ctx.StatusCode(iris.StatusOK)
+	ctx.JSON(response)
 }
 
 func (h *MoneyControlHandler) ScrapeDividendData(ctx iris.Context) {
@@ -53,6 +59,18 @@ func (h *MoneyControlHandler) ScrapeDividendData(ctx iris.Context) {
 	dividendHistory, err := mcDataCollection.ScrapeDividendHistory(company)
 	if err != nil {
 		h.mlog.Error("Error scraping dividend data for %s", company)
+		failedRes := models.FailedResponse{
+			Status:   iris.StatusInternalServerError,
+			ErrorMsg: "Something went wrong, please try again after some time",
+		}
+		ctx.StopWithJSON(
+			iris.StatusNotFound,
+			failedRes,
+		)
+		return
 	}
-	h.mlog.Info(dividendHistory)
+	h.mlog.Info(fmt.Sprintf("Dividend history scraped for company %s", company))
+
+	ctx.StatusCode(iris.StatusOK)
+	ctx.JSON(dividendHistory)
 }
