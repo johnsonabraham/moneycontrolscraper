@@ -2,35 +2,31 @@ package moneycontrolapi
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/johnsonabraham/moneycontrolscraper/config"
 	"github.com/johnsonabraham/moneycontrolscraper/internal/moneycontrol/models"
-	"github.com/johnsonabraham/moneycontrolscraper/internal/stores"
+	service "github.com/johnsonabraham/moneycontrolscraper/internal/moneycontrol/service"
 	"github.com/kataras/golog"
 	"github.com/kataras/iris/v12"
 )
 
 type MoneyControlHandler struct {
-	service stores.MoneycontrolDataServie
-	mlog    *golog.Logger
-	cfg     *config.AppEnvVars
+	moneyControlService service.MoneycontrolService
+	mlog                *golog.Logger
+	cfg                 *config.AppEnvVars
 }
 
-func NewMoneyControlHandler(store stores.MoneycontrolDataServie, vlog *golog.Logger, cfg *config.AppEnvVars) *MoneyControlHandler {
+func NewMoneyControlHandler(service service.MoneycontrolService, vlog *golog.Logger, cfg *config.AppEnvVars) *MoneyControlHandler {
 	return &MoneyControlHandler{
-		service: store,
-		mlog:    vlog,
-		cfg:     cfg,
+		moneyControlService: service,
+		mlog:                vlog,
+		cfg:                 cfg,
 	}
 }
 
 func (h *MoneyControlHandler) CollectMoneycontrolSymbols(ctx iris.Context) {
 	h.mlog.Info("Moneycontrol symbol collection started")
-	mcDataCollection, _ := NewMoneyControllDataCollection(h.mlog, h.cfg, h.service)
-	moneyControlSymbols := mcDataCollection.CaptureSymbols()
-	if err := h.service.InsertMoneyControlSymbols(moneyControlSymbols); err != nil {
-		h.mlog.Error("Error while saving Symbols")
+	if err := h.moneyControlService.CaptureSymbols(); err != nil {
 		failedRes := models.FailedResponse{
 			Status:   iris.StatusInternalServerError,
 			ErrorMsg: "Something went wrong, please try again after some time",
@@ -41,7 +37,6 @@ func (h *MoneyControlHandler) CollectMoneycontrolSymbols(ctx iris.Context) {
 		)
 		return
 	}
-	h.mlog.Info(fmt.Sprintf("Captured %s Symbols", strconv.Itoa(len(moneyControlSymbols))))
 	h.mlog.Info("Moneycontrol symbol collection ended")
 	response := models.Response{
 		Status: "success",
@@ -55,8 +50,7 @@ func (h *MoneyControlHandler) ScrapeDividendData(ctx iris.Context) {
 	company := ctx.URLParam("company")
 
 	h.mlog.Info(fmt.Sprintf("Moneycontrol dividend collection started for %s", company))
-	mcDataCollection, _ := NewMoneyControllDataCollection(h.mlog, h.cfg, h.service)
-	dividendHistory, err := mcDataCollection.ScrapeDividendHistory(company)
+	dividendHistory, err := h.moneyControlService.ScrapeDividendHistory(company)
 	if err != nil {
 		h.mlog.Error("Error scraping dividend data for %s", company)
 		failedRes := models.FailedResponse{

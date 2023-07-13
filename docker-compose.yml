@@ -1,0 +1,35 @@
+version: '1' 
+
+services:   
+  moneycontrolscraper:     
+    build:       
+      context: .       
+      dockerfile: ./docker/Dockerfile       
+      target: moneycontrolscraper
+    ports:
+      - "${APP_PORT}:${APP_PORT}"
+    env_file:
+      - .env
+    depends_on:                                                                                    
+      - db
+    networks:                                                                                      
+      - my_network 
+  db:                                                                                              
+    image: 'postgres:15.3-alpine3.18'
+    restart: always                                                                  
+    ports: 
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${PG_USER}
+      - POSTGRES_PASSWORD=${PG_PASSWORD}
+      - POSTGRES_DB=${PG_DBNAME}
+    volumes:
+      - db-data:/var/lib/postgresql/data # persist data even if container shuts down  
+    networks:                                                                                      
+      - my_network                                                                                 
+volumes:                                                                            
+  db-data: 
+    driver: local
+networks:                                                                                      
+  my_network:
+ 

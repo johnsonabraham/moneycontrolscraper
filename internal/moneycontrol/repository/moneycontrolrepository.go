@@ -1,4 +1,4 @@
-package stores
+package repository
 
 import (
 	"github.com/johnsonabraham/moneycontrolscraper/config"
@@ -8,28 +8,32 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-type MoneycontrolDataServie interface {
+type MoneycontrolRepository interface {
 	InsertMoneyControlSymbols([]models.CompanyInfo) error
 	FetchCompanyByNameConstant(companyName string) (models.CompanyInfo, error)
 }
 
-type moneycontrolDataService struct {
+type moneycontrolRepository struct {
 	db      *gorm.DB
 	envVars *config.AppEnvVars
 	vlog    *golog.Logger
 }
 
-func NewMoneycontrolDataService(db *gorm.DB, vlog *golog.Logger, envVars *config.AppEnvVars) *moneycontrolDataService {
-	return &moneycontrolDataService{
+func NewMoneycontrolRepository(db *gorm.DB, vlog *golog.Logger, envVars *config.AppEnvVars) *moneycontrolRepository {
+	return &moneycontrolRepository{
 		db:      db,
 		vlog:    vlog,
 		envVars: envVars,
 	}
 }
 
-func (s *moneycontrolDataService) InsertMoneyControlSymbols(result []models.CompanyInfo) error {
+func (s *moneycontrolRepository) InsertMoneyControlSymbols(result []models.CompanyInfo) error {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		er := s.db.Clauses(clause.OnConflict{
+		er := s.db.Exec("delete from company_infos").Error
+		if er != nil {
+			return er
+		}
+		er = s.db.Clauses(clause.OnConflict{
 			UpdateAll: true,
 		}).Create(&result).Error
 		return er
@@ -41,7 +45,7 @@ func (s *moneycontrolDataService) InsertMoneyControlSymbols(result []models.Comp
 	return err
 }
 
-func (s *moneycontrolDataService) FetchCompanyByNameConstant(companyName string) (models.CompanyInfo, error) {
+func (s *moneycontrolRepository) FetchCompanyByNameConstant(companyName string) (models.CompanyInfo, error) {
 	var company models.CompanyInfo
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		er := s.db.Where("company_name=?", companyName).First(&company).Error

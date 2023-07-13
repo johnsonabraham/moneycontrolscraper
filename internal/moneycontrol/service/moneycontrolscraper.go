@@ -1,4 +1,4 @@
-package moneycontrolapi
+package service
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/johnsonabraham/moneycontrolscraper/config"
 	"github.com/johnsonabraham/moneycontrolscraper/internal/moneycontrol/models"
-	"github.com/johnsonabraham/moneycontrolscraper/internal/stores"
+	repository "github.com/johnsonabraham/moneycontrolscraper/internal/moneycontrol/repository"
 	"github.com/kataras/golog"
 )
 
@@ -27,18 +27,24 @@ func GetCompanyList() (list []string) {
 	}
 	return
 }
-func NewMoneyControllDataCollection(mlog *golog.Logger, cfg *config.AppEnvVars, service stores.MoneycontrolDataServie) (*mcDataCollection, error) {
-	return &mcDataCollection{
-		mlog:    mlog,
-		cfg:     cfg,
-		service: service,
-	}, nil
+
+type MoneycontrolService interface {
+	CaptureSymbols() error
+	ScrapeDividendHistory(companyName string) ([]models.Dividend, error)
 }
 
-type mcDataCollection struct {
-	mlog    *golog.Logger
-	cfg     *config.AppEnvVars
-	service stores.MoneycontrolDataServie
+func NewMoneyControlService(mlog *golog.Logger, cfg *config.AppEnvVars, moneycontrolRepository repository.MoneycontrolRepository) *moneyControlService {
+	return &moneyControlService{
+		mlog:                   mlog,
+		cfg:                    cfg,
+		moneycontrolRepository: moneycontrolRepository,
+	}
+}
+
+type moneyControlService struct {
+	mlog                   *golog.Logger
+	cfg                    *config.AppEnvVars
+	moneycontrolRepository repository.MoneycontrolRepository
 }
 
 // GetPrice returns current price, previous close, open, variation, percentage and volume for a company
@@ -166,7 +172,7 @@ func getURL(company string) (URL string, err error) {
 }
 
 // Here stocks information necessary is saved and stored, which is calculated everytime package is imported
-func (i *mcDataCollection) CaptureSymbols() []models.CompanyInfo {
+func (i *moneyControlService) CaptureSymbols() error {
 	var companyInfos []models.CompanyInfo
 	capAlphabets := []string{"A", "B", "C", "D", "E", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
 	for _, char := range capAlphabets {
@@ -188,13 +194,18 @@ func (i *mcDataCollection) CaptureSymbols() []models.CompanyInfo {
 			}
 		})
 	}
-	return companyInfos
+	if err := i.moneycontrolRepository.InsertMoneyControlSymbols(companyInfos); err != nil {
+		i.mlog.Error("Error while saving Symbols")
+		return err
+	}
+	i.mlog.Info(fmt.Sprintf("Captured %s Symbols", strconv.Itoa(len(companyInfos))))
+	return nil
 }
 
 // Captures and stores dividend data of the provided company
-func (i *mcDataCollection) ScrapeDividendHistory(companyName string) ([]models.Dividend, error) {
+func (i *moneyControlService) ScrapeDividendHistory(companyName string) ([]models.Dividend, error) {
 	var dividendHistory []models.Dividend
-	companyInfo, err := i.service.FetchCompanyByNameConstant(companyName)
+	companyInfo, err := i.moneycontrolRepository.FetchCompanyByNameConstant(companyName)
 	if err != nil {
 		i.mlog.Error("Error fetching provided company", err)
 		return dividendHistory, err

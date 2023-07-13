@@ -21,7 +21,9 @@
                 "MS_ENV":"dev",
                 "API_KEY": "mc",
                 "MONEYCONTROL_SYMBOL_URL": "https://www.moneycontrol.com/india/stockpricequote/",
-                "MONEYCONTROL_DIVIDEND_URL" :"https://www.moneycontrol.com/company-facts/%s/dividends/%s"
+                "MONEYCONTROL_DIVIDEND_URL" :"https://www.moneycontrol.com/company-facts/%s/dividends/%s",
+                "MONEYCONTROL_COMP_DETAILS_URL" : "https://priceapi.moneycontrol.com/pricefeed/bse/equitycash/%s",
+                "APP_PORT" : "8090"
                 }
         }
     ]

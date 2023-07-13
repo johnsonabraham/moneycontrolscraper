@@ -7,6 +7,11 @@ type Dividend struct {
 	DividendPercentage float64
 	Dividend           float64
 	Remark             string
+	NSEID              string
+	MarketCap          string
+	SectorDetails      string
+	BSEID              string
+	MoreData           string
 }
 
 type CompanyInfo struct {

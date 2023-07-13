@@ -16,8 +16,9 @@ import (
 	"github.com/johnsonabraham/moneycontrolscraper/pkg/log"
 
 	api "github.com/johnsonabraham/moneycontrolscraper/internal/moneycontrol/api"
+	repository "github.com/johnsonabraham/moneycontrolscraper/internal/moneycontrol/repository"
+	service "github.com/johnsonabraham/moneycontrolscraper/internal/moneycontrol/service"
 	P "github.com/johnsonabraham/moneycontrolscraper/internal/persist"
-	S "github.com/johnsonabraham/moneycontrolscraper/internal/stores"
 )
 
 var (
@@ -73,10 +74,9 @@ func main() {
 
 	db := P.ConnectDB(cfg)
 
-	moneyControlDataService := S.NewMoneycontrolDataService(db, mlog, cfg)
-	moneyControlHandler := api.NewMoneyControlHandler(moneyControlDataService, mlog, cfg)
-
-	mlog.Info("MoneyBS app started.")
+	moneyControlRepository := repository.NewMoneycontrolRepository(db, mlog, cfg)
+	moneyControlService := service.NewMoneyControlService(mlog, cfg, moneyControlRepository)
+	moneyControlHandler := api.NewMoneyControlHandler(moneyControlService, mlog, cfg)
 
 	apiv1 := app.Party("/api/v1")
 	apiv1.Get("/auth", auth.GenerateToken(signer, cfg))
@@ -84,8 +84,10 @@ func main() {
 
 	apiv1.Get("/collectCompanySymbols", moneyControlHandler.CollectMoneycontrolSymbols)
 	apiv1.Get("/scrapeDividendHistory", moneyControlHandler.ScrapeDividendData)
-
-	if err := app.Listen(":8090", iris.WithOptimizations); err != nil {
+	port := ":" + cfg.AppPort
+	if err := app.Listen(port, iris.WithOptimizations); err != nil {
 		app.Logger().Fatalf("%s: due to :%s", errStartingMoneybsMS, err)
 	}
+
+	mlog.Info("MoneyBS app started.")
 }
