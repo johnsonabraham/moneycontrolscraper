@@ -1,7 +1,9 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -19,6 +21,18 @@ var (
 	stocksURL = make(models.StocksInfo)
 	baseURL   = "https://www.moneycontrol.com/technical-analysis"
 )
+
+type CompanyAdditionalDetailsJson struct {
+	Data data `json:"data"`
+}
+type data struct {
+	BSEID        string                 `json:"BSEID"`
+	MKTCAP       float64                `json:"MKTCAP"`
+	NSEID        string                 `json:"NSEID"`
+	MainSector   string                 `json:"main_sector"`
+	NewSubSector string                 `json:"newSubsector"`
+	Best5Set     map[string]interface{} `json:"best_5_set"`
+}
 
 // GetCompanyList returns the list of all the companies tracked via stockrate
 func GetCompanyList() (list []string) {
@@ -56,7 +70,7 @@ func GetPrice(company string) (models.StockPrice, error) {
 	}
 	doc, err := getStockQuote(url)
 	if err != nil {
-		return stockPrice, fmt.Errorf("Error in reading stock Price")
+		return stockPrice, fmt.Errorf("error in reading stock Price")
 	}
 	doc.Find(".bsedata_bx").Each(func(i int, s *goquery.Selection) {
 		stockPrice.BSE.Price, _ = strconv.ParseFloat(s.Find(".span_price_wrap").Text(), 64)
@@ -86,7 +100,7 @@ func GetTechnicals(company string) (models.StockTechnicals, error) {
 	}
 	doc, err := getStockQuote(url)
 	if err != nil {
-		return nil, fmt.Errorf("Error in reading stock Technicals %v", err.Error())
+		return nil, fmt.Errorf("error in reading stock Technicals %v", err.Error())
 	}
 	doc.Find("#techindd").Find("tbody").Find("tr").Each(func(i int, s *goquery.Selection) {
 		symbol := strings.Split(strings.Split(s.Find("td").First().Text(), "(")[0], "%")[0]
@@ -108,7 +122,7 @@ func GetMovingAverage(company string) (models.StockMovingAverage, error) {
 	}
 	doc, err := getStockQuote(url)
 	if err != nil {
-		return nil, fmt.Errorf("Error in reading stock Moving Averages %v", err.Error())
+		return nil, fmt.Errorf("error in reading stock Moving Averages %v", err.Error())
 	}
 	doc.Find("#movingavgd").Find("tbody").Find("tr").Each(func(i int, s *goquery.Selection) {
 		period, _ := strconv.Atoi(s.Find("td").First().Text())
@@ -130,7 +144,7 @@ func GetPivotLevels(company string) (models.StockPivotLevels, error) {
 	}
 	doc, err := getStockQuote(url)
 	if err != nil {
-		return nil, fmt.Errorf("Error in reading stock Pivot Levels %v", err.Error())
+		return nil, fmt.Errorf("error in reading stock Pivot Levels %v", err.Error())
 	}
 	doc.Find("#pevotld").Find("table").First().Find("tbody").Find("tr").Each(func(i int, s *goquery.Selection) {
 		pivotType := s.Find("td").First().Text()
@@ -148,27 +162,13 @@ func GetPivotLevels(company string) (models.StockPivotLevels, error) {
 	return stockPivotLevels, nil
 }
 
-// getStockQuote creates and returns the web document from a web URL
-func getStockQuote(URL string) (*goquery.Document, error) {
-	res, err := http.Get(URL)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-	if err != nil {
-		return nil, err
-	}
-	return doc, nil
-}
-
 // getURL checks whether we can read data for company and returns its data source URL
 func getURL(company string) (URL string, err error) {
 	if val, found := stocksURL[strings.ToLower(company)]; found {
 		URL = baseURL + "/" + val.Company + "/" + val.Symbol + "/daily"
 		return
 	}
-	return "", fmt.Errorf("Company Not Found")
+	return "", fmt.Errorf("company not found")
 }
 
 // Here stocks information necessary is saved and stored, which is calculated everytime package is imported
@@ -199,7 +199,45 @@ func (i *moneyControlService) CaptureSymbols() error {
 		return err
 	}
 	i.mlog.Info(fmt.Sprintf("Captured %s Symbols", strconv.Itoa(len(companyInfos))))
+	go i.CaptureAdditionalCompanyInfo(companyInfos)
 	return nil
+}
+
+func (i *moneyControlService) CaptureAdditionalCompanyInfo(companyInfos []models.CompanyInfo) {
+	for _, companyInfo := range companyInfos {
+		time.Sleep(5 * time.Second)
+		response, err := http.Get(fmt.Sprintf(i.cfg.MoneyControlCompDetailsUrl, companyInfo.Symbol))
+		if err != nil {
+			i.mlog.Error(fmt.Sprintf("Error while saving gathering additional data for %s", companyInfo.Symbol), err)
+		}
+		defer response.Body.Close()
+
+		body, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			i.mlog.Error(fmt.Sprintf("Failed to read the response body while fetching addition data for %s:",
+				companyInfo.Symbol), err)
+			continue
+		}
+		var additionalDetails CompanyAdditionalDetailsJson
+		err = json.Unmarshal(body, &additionalDetails)
+		if err != nil {
+			i.mlog.Error(fmt.Sprintf("Failed to unmarshall the response body while fetching addition data for %s:",
+				companyInfo.Symbol), err)
+			continue
+		}
+		companyInfo.BSEID = additionalDetails.Data.BSEID
+		companyInfo.MarketCap = additionalDetails.Data.MKTCAP
+		companyInfo.NSEID = additionalDetails.Data.NSEID
+		companyInfo.MainSectorDetails = additionalDetails.Data.MainSector
+		companyInfo.SubSectorDetails = additionalDetails.Data.NewSubSector
+		if err := i.moneycontrolRepository.UpdateSymbol(companyInfo); err != nil {
+			i.mlog.Error(fmt.Sprintf("Failed to update additional company info for %s:",
+				companyInfo.Symbol), err)
+			continue
+		}
+		i.mlog.Info(fmt.Sprintf("Done collecting additional info for %s", companyInfo.Company))
+	}
+	i.mlog.Info("Done collecting additional info for companies")
 }
 
 // Captures and stores dividend data of the provided company
@@ -210,7 +248,6 @@ func (i *moneyControlService) ScrapeDividendHistory(companyName string) ([]model
 		i.mlog.Error("Error fetching provided company", err)
 		return dividendHistory, err
 	}
-	i.mlog.Info(fmt.Sprintf(i.cfg.MoneyControlDividendURL, companyInfo.CompanyName, companyInfo.Sector))
 	response, err := http.Get(fmt.Sprintf(i.cfg.MoneyControlDividendURL, companyInfo.CompanyName, companyInfo.Symbol))
 	if err != nil {
 		i.mlog.Error(fmt.Sprintf("Error while scraping dividend data for %s", companyName), err)
@@ -250,4 +287,18 @@ func (i *moneyControlService) ScrapeDividendHistory(companyName string) ([]model
 
 	})
 	return dividendHistory, nil
+}
+
+// getStockQuote creates and returns the web document from a web URL
+func getStockQuote(URL string) (*goquery.Document, error) {
+	res, err := http.Get(URL)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	doc, err := goquery.NewDocumentFromReader(res.Body)
+	if err != nil {
+		return nil, err
+	}
+	return doc, nil
 }

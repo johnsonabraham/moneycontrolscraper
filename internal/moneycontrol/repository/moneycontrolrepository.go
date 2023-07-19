@@ -11,6 +11,7 @@ import (
 type MoneycontrolRepository interface {
 	InsertMoneyControlSymbols([]models.CompanyInfo) error
 	FetchCompanyByNameConstant(companyName string) (models.CompanyInfo, error)
+	UpdateSymbol(result models.CompanyInfo) error
 }
 
 type moneycontrolRepository struct {
@@ -34,8 +35,24 @@ func (s *moneycontrolRepository) InsertMoneyControlSymbols(result []models.Compa
 			return er
 		}
 		er = s.db.Clauses(clause.OnConflict{
-			UpdateAll: true,
+			Columns:   []clause.Column{{Name: "symbol"}},
+			DoNothing: true,
 		}).Create(&result).Error
+		return er
+	})
+	if err != nil {
+		s.vlog.Error(err)
+		return err
+	}
+	return err
+}
+
+func (s *moneycontrolRepository) UpdateSymbol(result models.CompanyInfo) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		er := s.db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "symbol"}},
+			UpdateAll: true,
+		}).Save(&result).Error
 		return er
 	})
 	if err != nil {

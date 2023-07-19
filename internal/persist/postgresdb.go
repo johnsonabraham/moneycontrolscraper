@@ -14,7 +14,8 @@ import (
 func ConnectDB(cfg *config.AppEnvVars) *gorm.DB {
 	connectionString := fmt.Sprintf("host=%s user=%s password=%s dbname=%s sslmode=disable", cfg.PGHostIP, cfg.PGUser, cfg.PGPassword, cfg.PGDbName)
 	db, err := gorm.Open(postgres.Open(connectionString), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger:          logger.Default.LogMode(logger.Info),
+		CreateBatchSize: 1000,
 	})
 	if err != nil {
 		fmt.Println(err)

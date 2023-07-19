@@ -7,19 +7,20 @@ type Dividend struct {
 	DividendPercentage float64
 	Dividend           float64
 	Remark             string
-	NSEID              string
-	MarketCap          string
-	SectorDetails      string
-	BSEID              string
-	MoreData           string
 }
 
 type CompanyInfo struct {
-	ID          int64 `gorm:"primary_key NOT NULL AUTO_INCREMENT"`
-	CompanyName string
-	Company     string
-	Sector      string
-	Symbol      string
+	ID                int64 `gorm:"primary_key NOT NULL AUTO_INCREMENT"`
+	CompanyName       string
+	Company           string
+	Sector            string
+	Symbol            string `gorm:"uniqueIndex"`
+	NSEID             string
+	MarketCap         float64
+	MainSectorDetails string
+	SubSectorDetails  string
+	BSEID             string
+	MoreData          string
 }
 
 type (
