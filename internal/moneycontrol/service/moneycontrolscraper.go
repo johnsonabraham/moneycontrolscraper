@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -15,6 +16,7 @@ import (
 	"github.com/johnsonabraham/moneycontrolscraper/internal/moneycontrol/models"
 	repository "github.com/johnsonabraham/moneycontrolscraper/internal/moneycontrol/repository"
 	"github.com/kataras/golog"
+	"github.com/kataras/iris/v12"
 )
 
 var (
@@ -44,7 +46,8 @@ func GetCompanyList() (list []string) {
 
 type MoneycontrolService interface {
 	CaptureSymbols() error
-	ScrapeDividendHistory(companyName string) ([]models.Dividend, error)
+	ScrapeDividendHistory(companyName string) error
+	CaptureHistoricalData(ticker string) error
 }
 
 func NewMoneyControlService(mlog *golog.Logger, cfg *config.AppEnvVars, moneycontrolRepository repository.MoneycontrolRepository) *moneyControlService {
@@ -241,23 +244,23 @@ func (i *moneyControlService) CaptureAdditionalCompanyInfo(companyInfos []models
 }
 
 // Captures and stores dividend data of the provided company
-func (i *moneyControlService) ScrapeDividendHistory(companyName string) ([]models.Dividend, error) {
+func (i *moneyControlService) ScrapeDividendHistory(ticker string) error {
 	var dividendHistory []models.Dividend
-	companyInfo, err := i.moneycontrolRepository.FetchCompanyByNameConstant(companyName)
+	companyInfo, err := i.moneycontrolRepository.FetchCompanyByNameConstant(ticker)
 	if err != nil {
 		i.mlog.Error("Error fetching provided company", err)
-		return dividendHistory, err
+		return err
 	}
 	response, err := http.Get(fmt.Sprintf(i.cfg.MoneyControlDividendURL, companyInfo.CompanyName, companyInfo.Symbol))
 	if err != nil {
-		i.mlog.Error(fmt.Sprintf("Error while scraping dividend data for %s", companyName), err)
+		i.mlog.Error(fmt.Sprintf("Error while scraping dividend data for %s", ticker), err)
 	}
 	defer response.Body.Close()
 
 	// Parse HTML document
 	doc, err := goquery.NewDocumentFromReader(response.Body)
 	if err != nil {
-		i.mlog.Error(fmt.Sprintf("Error parsing response of dividend page for %s", companyName), err)
+		i.mlog.Error(fmt.Sprintf("Error parsing response of dividend page for %s", ticker), err)
 	}
 	// Scrape historical dividend data
 	doc.Find("table.mctable1>tbody>tr").Each(func(count int, s *goquery.Selection) {
@@ -265,28 +268,121 @@ func (i *moneyControlService) ScrapeDividendHistory(companyName string) ([]model
 		var dateFormat = "02-01-2006"
 		t, err := time.Parse(dateFormat, s.Find("td:nth-child(1)").Text())
 		if err != nil {
-			i.mlog.Error(fmt.Sprintf("Error converting dividend announcement date for %s", companyName), err)
+			i.mlog.Error(fmt.Sprintf("Error converting dividend announcement date for %s", ticker), err)
 		}
 		dividend.AnnouncementDate = t.Unix()
 		t, err = time.Parse(dateFormat, s.Find("td:nth-child(2)").Text())
 		if err != nil {
-			i.mlog.Error(fmt.Sprintf("Error converting dividend ex date for %s", companyName), err)
+			i.mlog.Error(fmt.Sprintf("Error converting dividend ex date for %s", ticker), err)
 		}
 		dividend.ExDate = t.Unix()
 		dividend.DividendType = s.Find("td:nth-child(3)").Text()
 		dividend.DividendPercentage, err = strconv.ParseFloat(s.Find("td:nth-child(4)").Text(), 64)
 		if err != nil {
-			i.mlog.Error(fmt.Sprintf("Error converting dividend percentage to float for %s", companyName), err)
+			i.mlog.Error(fmt.Sprintf("Error converting dividend percentage to float for %s", ticker), err)
 		}
 		dividend.Dividend, err = strconv.ParseFloat(s.Find("td:nth-child(5)").Text(), 64)
 		if err != nil {
-			i.mlog.Error(fmt.Sprintf("Error converting dividend amount to float for %s", companyName), err)
+			i.mlog.Error(fmt.Sprintf("Error converting dividend amount to float for %s", ticker), err)
 		}
 		dividend.Remark = s.Find("td:nth-child(6)").Text()
 		dividendHistory = append(dividendHistory, dividend)
 
 	})
-	return dividendHistory, nil
+	token, err := i.GetMoneyBSToken(i.cfg)
+	if err != nil {
+		i.mlog.Error("Error while generating token for MoneyBS", err)
+		return err
+	}
+	jsonBody, err := json.Marshal(dividendHistory)
+	if err != nil {
+		i.mlog.Error("Error while marshalling dividend data", err)
+		return nil
+	}
+
+	req, err := http.NewRequest("POST", fmt.Sprintf(i.cfg.MoneyBSBaseURL+i.cfg.MoneyBSHistoricalDividendDataEndpoint, companyInfo.NSEID), bytes.NewBuffer(jsonBody))
+	if err != nil {
+		i.mlog.Error(err)
+		return err
+	}
+	var bearer = "Bearer " + *token
+
+	req.Header.Set("Authorization", bearer)
+	client := &http.Client{}
+	response, err = client.Do(req)
+	if err != nil {
+		i.mlog.Error(err)
+		return err
+	}
+	defer response.Body.Close()
+	return nil
+}
+
+func (i *moneyControlService) CaptureHistoricalData(ticker string) error {
+	companyInfo, err := i.moneycontrolRepository.FetchCompanyByNameConstant(ticker)
+	if err != nil {
+		i.mlog.Error("Error fetching provided company", err)
+		return err
+	}
+	url := fmt.Sprintf(i.cfg.MoneyControlHistoricalDataUrl, companyInfo.NSEID, fmt.Sprint(time.Now().Unix()))
+	response, err := http.Get(url)
+	if err != nil {
+		i.mlog.Error(err)
+		return err
+	}
+	if response.StatusCode != iris.StatusOK {
+		i.mlog.Error(err)
+		return err
+	}
+	defer response.Body.Close()
+
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		i.mlog.Error(fmt.Sprintf("Failed to read the response body while fetching addition data for %s:",
+			ticker), err)
+		return err
+	}
+	token, err := i.GetMoneyBSToken(i.cfg)
+	if err != nil {
+		i.mlog.Error("Error while generating token for MoneyBS", err)
+		return err
+	}
+	req, err := http.NewRequest("POST", fmt.Sprintf(i.cfg.MoneyBSBaseURL+i.cfg.MoneyBSHistoricalDataEndpoint, ticker), bytes.NewBuffer(body))
+	if err != nil {
+		i.mlog.Error("Error creating post request to MoneyBS", err)
+		return err
+	}
+	var bearer = "Bearer " + *token
+
+	req.Header.Set("Authorization", bearer)
+	client := &http.Client{}
+	go client.Do(req)
+	return nil
+}
+
+func (i *moneyControlService) GetMoneyBSToken(cfg *config.AppEnvVars) (*string, error) {
+	req, err := http.NewRequest("GET", cfg.MoneyBSBaseURL+cfg.MoneyBSAuthEndpoint, nil)
+	if err != nil {
+		i.mlog.Error(err)
+		return nil, err
+	}
+	req.Header.Add("x-api-key", cfg.MoneyBSAPIKey)
+	client := &http.Client{}
+	response, err := client.Do(req)
+	if err != nil {
+		i.mlog.Error(err)
+		return nil, err
+	}
+
+	defer response.Body.Close()
+	// Read response body
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		i.mlog.Error(err)
+		return nil, err
+	}
+	b := string(body)
+	return &b, nil
 }
 
 // getStockQuote creates and returns the web document from a web URL

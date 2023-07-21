@@ -10,7 +10,7 @@ import (
 
 type MoneycontrolRepository interface {
 	InsertMoneyControlSymbols([]models.CompanyInfo) error
-	FetchCompanyByNameConstant(companyName string) (models.CompanyInfo, error)
+	FetchCompanyByNameConstant(companyName string) (*models.CompanyInfo, error)
 	UpdateSymbol(result models.CompanyInfo) error
 }
 
@@ -62,15 +62,15 @@ func (s *moneycontrolRepository) UpdateSymbol(result models.CompanyInfo) error {
 	return err
 }
 
-func (s *moneycontrolRepository) FetchCompanyByNameConstant(companyName string) (models.CompanyInfo, error) {
+func (s *moneycontrolRepository) FetchCompanyByNameConstant(companyName string) (*models.CompanyInfo, error) {
 	var company models.CompanyInfo
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		er := s.db.Where("company_name=?", companyName).First(&company).Error
+		er := s.db.Where("nse_id=?", companyName).First(&company).Error
 		return er
 	})
 	if err != nil {
 		s.vlog.Error(err)
-		return company, err
+		return &company, err
 	}
-	return company, nil
+	return &company, nil
 }

@@ -83,7 +83,8 @@ func main() {
 	apiv1.Use(verifyMiddleware)
 
 	apiv1.Get("/collectCompanySymbols", moneyControlHandler.CollectMoneycontrolSymbols)
-	apiv1.Get("/scrapeDividendHistory", moneyControlHandler.ScrapeDividendData)
+	apiv1.Get("/collectDividendHistory", moneyControlHandler.CollectDividendData)
+	apiv1.Get("/collectHistoricalDailyData", moneyControlHandler.CollectHistoricalDailyDate)
 	port := ":" + cfg.AppPort
 	if err := app.Listen(port, iris.WithOptimizations); err != nil {
 		app.Logger().Fatalf("%s: due to :%s", errStartingMoneybsMS, err)

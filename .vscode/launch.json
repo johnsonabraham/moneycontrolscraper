@@ -17,12 +17,18 @@
                 "PG_USER": "postgres",
                 "PG_PASSWORD": "password",
                 "PG_DBNAME": "moneycontrol",
-                "INFLUXDB_BUCKET": "yahoo_raw_data",
                 "MS_ENV":"dev",
                 "API_KEY": "mc",
+                "MONEYBS_API_KEY": "bullshit",
                 "MONEYCONTROL_SYMBOL_URL": "https://www.moneycontrol.com/india/stockpricequote/",
                 "MONEYCONTROL_DIVIDEND_URL" :"https://www.moneycontrol.com/company-facts/%s/dividends/%s",
                 "MONEYCONTROL_COMP_DETAILS_URL" : "https://priceapi.moneycontrol.com/pricefeed/bse/equitycash/%s",
+                "MONEYCONTROL_HISTORICAL_DATA_URL": "https://priceapi.moneycontrol.com/techCharts/indianMarket/stock/history?symbol=%s&resolution=1D&from=-5278608000&to=%s&countback=100000&currencyCode=INR",
+                "MoneyBSAPIKey": "bullshit",
+                "MONEYBS_BASE_URL": "http://localhost:8080",
+                "MONEYBS_AUTH_ENDPOINT": "/api/v1/auth",
+                "MONEYBS_HISTORICAL_DATA_ENDPOINT" : "/api/v1/storeHistoricalDailyData?symbol=%s",
+                "MONEYBS_HISTORICAL_DIVIDEND_DATA_ENDPOINT" : "/api/v1/storeHistoricalDividendData?symbol=%s",
                 "APP_PORT" : "8090"
                 }
         }
